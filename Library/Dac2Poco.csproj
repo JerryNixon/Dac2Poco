@@ -1,0 +1,23 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net7.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
+    <Title>Dac2Poco</Title>
+    <Version>0.0.2-prerelease</Version>
+    <PackageId>Dac2Poco</PackageId>
+    <Authors>JerryNixon</Authors>
+    <Description>Create .NET POCO classes from DACPAC files</Description>
+    <PackageIcon>dac2poco.png</PackageIcon>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\..\..\..\..\..\Temp\dac2poco.png">
+      <Pack>True</Pack>
+      <PackagePath>\</PackagePath>
+    </None>
+  </ItemGroup>
+
+</Project>
