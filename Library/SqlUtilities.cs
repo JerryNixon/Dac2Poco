@@ -1,7 +1,52 @@
-﻿namespace Dac2Poco;
+﻿using System.Data;
+using System.Xml.XPath;
+
+namespace Dac2Poco;
 
 public static class SqlUtilities
 {
+    public static bool HasRangeString(this string sqlDataType, out string range)
+    {
+        if (!Enum.TryParse<SqlDataTypeOption>(sqlDataType, true, out var sqlType))
+        {
+            range = string.Empty;
+            return false;
+        }
+
+        range = sqlType switch
+        {
+            SqlDataTypeOption.Int => $"[Range({int.MinValue}, {int.MaxValue})]",
+            SqlDataTypeOption.SmallInt => $"[Range({short.MinValue}, {short.MaxValue})]",
+            SqlDataTypeOption.TinyInt => $"[Range(0, {byte.MaxValue})]",
+            SqlDataTypeOption.BigInt => $"[Range({long.MinValue}, {long.MaxValue})]",
+            SqlDataTypeOption.Float => $"[Range({double.MinValue}, {double.MaxValue})]",
+            SqlDataTypeOption.Real => $"[Range({float.MinValue}, {float.MaxValue})]",
+            SqlDataTypeOption.Decimal => $"[Range({-Math.Pow(10, 38) + 1}, {Math.Pow(10, 38) - 1})]",
+            SqlDataTypeOption.Money => $"[Range({decimal.MinValue}, {decimal.MaxValue})]",
+            SqlDataTypeOption.SmallMoney => $"[Range({-214748.3648M}, {214748.3647M})]",
+            SqlDataTypeOption.Date => $"[Range(\"{DateOnly.MinValue}\", \"{DateOnly.MaxValue}\")]",
+            SqlDataTypeOption.DateTime => $"[Range(\"{DateOnly.MinValue}\", \"{DateOnly.MaxValue}\")]",
+            SqlDataTypeOption.DateTime2 => $"[Range(\"{DateOnly.MinValue}\", \"{DateOnly.MaxValue}\")]",
+            _ => string.Empty
+        };
+        return !string.IsNullOrEmpty(range);
+    }
+
+    public static bool IsUnicodeSqlType(this string sqlDataType)
+    {
+        if (!Enum.TryParse<SqlDataTypeOption>(sqlDataType, true, out var result))
+        {
+            return false;
+        }
+        return result switch
+        {
+            SqlDataTypeOption.NChar => true,
+            SqlDataTypeOption.NText => true,
+            SqlDataTypeOption.NVarChar => true,
+            _ => false
+        };
+    }
+
     public static string GetDotnetType(this SqlDataTypeOption sqlDataType, bool isNullable = false)
     {
         if (IsUnsupportedType())

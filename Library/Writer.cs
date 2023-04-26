@@ -28,7 +28,6 @@ public class Writer
 
         code.AppendLine("using System.ComponentModel.DataAnnotations.Schema;");
         code.AppendLine("using System.ComponentModel.DataAnnotations;");
-        // code.AppendLine("using System.Net.Http.Json;");
         code.AppendLine("using System.ComponentModel;");
 
         if (!string.IsNullOrEmpty(baseName))
@@ -81,7 +80,7 @@ public class Writer
             if (table.Columns.Any(x => x.IsPrimaryKey))
             {
                 var key = table.Columns.First(x => x.IsPrimaryKey);
-                code.AppendLine($"    [DebuggerDisplay(\"{key.Name} = {{{key.Name}}}\")]");
+                code.AppendLine($"    [DebuggerDisplay(\"{table.Name}.{key.Name} = {{{key.Name}}}\")]");
             }
 
             code.AppendLine($"    [Table(\"{table.Name}\", Schema = \"{table.Schema}\")]");
@@ -105,7 +104,7 @@ public class Writer
             }
             if (attributes && !column.IsNullable)
             {
-                code.AppendLine("        [Required]");
+                code.AppendLine($"        [Required{(netType == typeof(System.String) ? "(AllowEmptyStrings = true)" : string.Empty)}]");
             }
             if (attributes && column.IsComputed)
             {
@@ -126,6 +125,10 @@ public class Writer
             if (attributes && column.IsIdentity)
             {
                 code.AppendLine("        [DatabaseGenerated(DatabaseGeneratedOption.Identity)]");
+            }
+            if (attributes && column.IsUnicode)
+            {
+                code.AppendLine($"        [Unicode(true)]");
             }
             if (attributes)
             {

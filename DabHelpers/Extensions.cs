@@ -86,7 +86,8 @@ namespace DabHelpers
 
             var json = await response.Content.ReadAsStringAsync();
             using var document = JsonDocument.Parse(json);
-            var value = document.RootElement.GetProperty(propName).GetRawText();
+            if (!document.RootElement.TryGetProperty(propName, out var prop)) return default;
+            var value = prop.GetRawText();
             return JsonSerializer.Deserialize<T>(value) ?? default;
         }
     }

@@ -12,11 +12,12 @@ public record ColumnInfo
     public int? Precision { get; set; }
     public int? Scale { get; set; }
 
+    public bool IsUnicode => SqlType.IsUnicodeSqlType();
     public bool IsNullable { get; set; }
     public bool IsIdentity { get; set; }
     public bool IsPrimaryKey { get; set; }
     public bool IsComputed { get; set; }
-    public string Expression { get; set; }
+    public string? Expression { get; set; }
     public bool IsGraph { get; set; }
 
     public override string ToString()
