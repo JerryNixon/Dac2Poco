@@ -1,21 +1,10 @@
 ﻿// learn more at https://aka.ms/dab
 
-using System.Collections.Generic;
-using System;
 using System.Diagnostics;
-using System.Linq;
-using System.Net.Http;
 using System.Net.Http.Json;
 using System.Reflection;
-using System.Runtime.CompilerServices;
-using System.Security.Cryptography.X509Certificates;
 using System.Text;
-using System.Text.Encodings.Web;
-using System.Text.Json;
-using System.Text.RegularExpressions;
-using System.Threading.Tasks;
 using System.Web;
-using System.Xml.Linq;
 using System.ComponentModel.DataAnnotations.Schema;
 using System.ComponentModel.DataAnnotations;
 
