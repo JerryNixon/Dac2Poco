@@ -14,7 +14,7 @@ namespace VSIXProjectPocoGenerator
         
         public const string Description = "Description";
 
-        public override string GetDefaultExtension() => ".cs";
+        public override string GetDefaultExtension() => ".dacpac.cs";
 
         protected override byte[] GenerateCode(string inputFileName, string inputFileContent)
         {

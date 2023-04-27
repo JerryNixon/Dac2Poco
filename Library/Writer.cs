@@ -126,10 +126,6 @@ public class Writer
             {
                 code.AppendLine("        [DatabaseGenerated(DatabaseGeneratedOption.Identity)]");
             }
-            if (attributes && column.IsUnicode)
-            {
-                code.AppendLine($"        [Unicode(true)]");
-            }
             if (attributes)
             {
                 var typeName = column.IsComputed ? "Computed" : column.SqlType;
