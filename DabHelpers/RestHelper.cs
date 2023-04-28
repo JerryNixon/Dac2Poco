@@ -7,6 +7,7 @@ using System.Text;
 using System.Web;
 using System.ComponentModel.DataAnnotations.Schema;
 using System.ComponentModel.DataAnnotations;
+using System.Dynamic;
 
 namespace DabHelpers;
 
@@ -21,7 +22,8 @@ public partial class RestHelper<T> : IRestHelper<T> where T : new()
         this.httpClient = httpClient ?? new();
     }
 
-    public async Task<(RestResult<IEnumerable<T>> result, string ContinuationUrl)> GetManyAsync(string? select = null, string? filter = null, string? orderby = null, int? first = null, int? after = null)
+    public async Task<(IEnumerable<T> Items, Exception Error, string ContinuationUrl)> GetManyAsync(
+        string? select = null, string? filter = null, string? orderby = null, int? first = null, int? after = null)
     {
         try
         {
@@ -32,15 +34,12 @@ public partial class RestHelper<T> : IRestHelper<T> where T : new()
             if (!response.IsSuccessStatusCode) Debugger.Break();
             response.EnsureSuccessStatusCode();
 
-            var json = await response.Content.ReadAsStringAsync();
-            var value = await response.GetJsonPropertyAsync<IEnumerable<T>>("value");
-            var nextLink = await response.GetJsonPropertyAsync<string>("nextLink");
-
-            return (value?.ToArray() ?? Array.Empty<T>(), nextLink ?? string.Empty);
+            var result = await response.Content.ReadFromJsonAsync<RestRoot<T>>();
+            return (result?.Values!, default!, result?.ContinuationToken!);
         }
         catch (Exception ex)
         {
-            return (ex, default!);
+            return (default!, ex, default!);
         }
 
         string CombineQuerystring()
@@ -57,23 +56,25 @@ public partial class RestHelper<T> : IRestHelper<T> where T : new()
         }
     }
 
-    public async Task<RestResult<T?>> GetOneAsync(params (string Name, object Value)[] keys)
+
+    public async Task<RestResult<T?>> GetOneAsync(T model)
     {
         try
         {
-            if (!KeysValid<T?>(keys, out var error))
+            if (!ModelValid<T?>(model, out var error))
             {
                 return error;
             }
 
-            var url = ConstructUrl(keys);
+            var url = ConstructUrl(model);
             Trace.WriteLine($"{nameof(GetOneAsync)} URL:{url}");
 
             var response = await httpClient.GetAsync(url);
             if (!response.IsSuccessStatusCode) Debugger.Break();
             response.EnsureSuccessStatusCode();
 
-            return (await ReturnSingleValueAsync(response, required: false))!;
+            var result = await response.Content.ReadFromJsonAsync<RestRoot<T>>();
+            return result!.Values.SingleOrDefault();
         }
         catch (Exception ex)
         {
@@ -106,7 +107,8 @@ public partial class RestHelper<T> : IRestHelper<T> where T : new()
             if (!response.IsSuccessStatusCode) Debugger.Break();
             response.EnsureSuccessStatusCode();
 
-            return await ReturnSingleValueAsync(response, true);
+            var result = await response.Content.ReadFromJsonAsync<RestRoot<T>>();
+            return result!.Values.Single();
         }
         catch (Exception ex)
         {
@@ -141,7 +143,8 @@ public partial class RestHelper<T> : IRestHelper<T> where T : new()
             if (!response.IsSuccessStatusCode) Debugger.Break();
             response.EnsureSuccessStatusCode();
 
-            return await ReturnSingleValueAsync(response, true);
+            var result = await response.Content.ReadFromJsonAsync<RestRoot<T>>();
+            return result!.Values.Single();
         }
         catch (Exception ex)
         {
@@ -175,7 +178,8 @@ public partial class RestHelper<T> : IRestHelper<T> where T : new()
             if (!response.IsSuccessStatusCode) Debugger.Break();
             response.EnsureSuccessStatusCode();
 
-            return await ReturnSingleValueAsync(response, true);
+            var result = await response.Content.ReadFromJsonAsync<RestRoot<T>>();
+            return result!.Values.Single();
         }
         catch (Exception ex)
         {
@@ -215,23 +219,6 @@ public partial class RestHelper<T> : IRestHelper<T> where T : new()
         }
     }
 
-    private IEnumerable<string> GetReadonlyProperties()
-    {
-        return typeof(T)
-            .GetProperties(BindingFlags.Public | BindingFlags.Instance)
-            .Where(p => Attribute.IsDefined(p, typeof(DatabaseGeneratedAttribute))
-                && ((DatabaseGeneratedAttribute)p.GetCustomAttributes(typeof(DatabaseGeneratedAttribute), true).FirstOrDefault()!)?.DatabaseGeneratedOption == DatabaseGeneratedOption.Computed)
-            .Select(x => x.Name);
-    }
-
-    private IEnumerable<string> GetKeyProperties()
-    {
-        return typeof(T)
-            .GetProperties(BindingFlags.Public | BindingFlags.Instance)
-            .Where(p => Attribute.IsDefined(p, typeof(KeyAttribute)))
-            .Select(x => x.Name);
-    }
-
     private IEnumerable<(string Name, string Value)> GetKeyPropertiesWithValues(T model)
     {
         return typeof(T)
@@ -254,85 +241,78 @@ public partial class RestHelper<T> : IRestHelper<T> where T : new()
             throw new ArgumentException($"Key property {error.Value} has no value.");
         }
 
-        return ConstructUrl(keys.Select(x => (x.Name, (object)x.Value)).ToArray());
+        return ConstructUrl(keys.Select(x => (x.Name, x.Value)).ToArray());
     }
 
-    private string ConstructUrl(params (string Name, object Value)[] keys)
+    private string ConstructUrl(params (string Name, string Value)[] keys)
     {
         var builder = new StringBuilder(baseUri);
+
         foreach (var key in keys)
         {
             var name = HttpUtility.UrlEncode(key.Name);
             var value = HttpUtility.UrlEncode(key.Value.ToString());
             builder.Append($"/{name}/{value}");
         }
+        
         return builder.ToString();
     }
 
     private object Clone(T model, bool removeKeys = true, bool removeComputedColumns = true)
     {
-        var knames = removeKeys ? GetKeyProperties() : Array.Empty<string>();
-        var cnames = removeComputedColumns ? GetReadonlyProperties() : Array.Empty<string>();
-        return model!.CloneWithoutProperties(knames.Union(cnames).ToArray());
+        ArgumentNullException.ThrowIfNull(model);
+
+        var props = model.GetType()
+            .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            .Except(GetKeyProperties())
+            .Except(GetReadonlyProperties());
+
+        var clone = new ExpandoObject() as IDictionary<string, Object>;
+
+        foreach (var prop in props)
+        {
+            clone.Add(prop.Name, prop.GetValue(model)!);
+        }
+
+        return clone;
+
+        IEnumerable<PropertyInfo> GetReadonlyProperties()
+        {
+            return typeof(T)
+                .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+                .Where(p => Attribute.IsDefined(p, typeof(DatabaseGeneratedAttribute))
+                    && (p.GetCustomAttributes(typeof(DatabaseGeneratedAttribute), true).FirstOrDefault()! as DatabaseGeneratedAttribute)?.DatabaseGeneratedOption == DatabaseGeneratedOption.Computed);
+        }
+
+        IEnumerable<PropertyInfo> GetKeyProperties()
+        {
+            return typeof(T)
+                .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+                .Where(p => Attribute.IsDefined(p, typeof(KeyAttribute)));
+        }
     }
 
-    private async Task<RestResult<T>> ReturnSingleValueAsync(HttpResponseMessage response, bool required)
+    private bool ModelValid<TResult>(T model, out Exception error)
     {
-        var result = await response.GetJsonPropertyAsync<IEnumerable<T>>("value");
-        if (result is null)
-        {
-            return new Exception("Invalid value property in Json response.");
-        }
-        if (required && !result.Any())
-        {
-            return new Exception("Response returned no items.");
-        }
-        return result.FirstOrDefault()!;
-    }
-
-    private bool ModelValid<TResult>(T model, out RestResult<TResult> result)
-    {
-        result = null!;
+        error = null!;
 
         if (model is null)
         {
-            result = new ArgumentNullException(nameof(model));
+            error = new ArgumentNullException(nameof(model));
         }
 
-        if (GetKeyPropertiesWithValues(model).Any(x => string.IsNullOrEmpty(x.Value)))
-        {
-            result = new ArgumentException($"All keys must have values in: {typeof(T)}", nameof(model));
-        }
-
-        return result is null;
-    }
-
-    private bool KeysValid<TResult>((string Name, object Value)[] keys, out RestResult<TResult> result)
-    {
-        result = null!;
+        var keys = GetKeyPropertiesWithValues(model);
 
         if (!keys.Any())
         {
-            result = new ArgumentException("At least one key is required.");
+            error = new ArgumentException("At least one key is required.");
         }
 
-        if (keys.Any(x => string.IsNullOrEmpty(x.Name)))
+        if (keys.Any(x => string.IsNullOrEmpty(x.Value)))
         {
-            result = new ArgumentException("Every key.Name is required.");
+            error = new ArgumentException($"All keys must have values in: {typeof(T)}", nameof(model));
         }
 
-        if (keys.Any(x => string.IsNullOrEmpty(x.Value?.ToString())))
-        {
-            result = new ArgumentException("Every key.Value is required.");
-        }
-
-        var names = GetKeyProperties();
-
-        if (keys.Length != names.Count() || !names.All(n => keys.Any(k => k.Name == n)))
-        {
-            result = new ArgumentException($"Supplied keys must match keys in {typeof(T)}.");
-        }
-
-        return result is null;
+        return error is null;
     }
 }
