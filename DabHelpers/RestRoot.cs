@@ -9,5 +9,5 @@ public class RestRoot<T>
     [JsonPropertyName("value")]
     public IEnumerable<T> Values { get; set; } = default!;
     [JsonPropertyName("nextLink")]
-    public string? ContinuationToken { get; set; }
+    public string? ContinuationUrl { get; set; }
 }

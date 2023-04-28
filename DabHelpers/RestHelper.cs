@@ -22,25 +22,18 @@ public partial class RestHelper<T> : IRestHelper<T> where T : new()
         this.httpClient = httpClient ?? new();
     }
 
-    public async Task<(IEnumerable<T> Items, Exception Error, string ContinuationUrl)> GetManyAsync(
+    public async Task<(IEnumerable<T> Items, string ContinuationUrl)> GetManyAsync(
         string? select = null, string? filter = null, string? orderby = null, int? first = null, int? after = null)
     {
-        try
-        {
-            var url = CombineQuerystring();
-            Trace.WriteLine($"{nameof(GetManyAsync)} URL:{url}");
+        var url = CombineQuerystring();
+        Trace.WriteLine($"{nameof(GetManyAsync)} URL:{url}");
 
-            var response = await httpClient.GetAsync(url);
-            if (!response.IsSuccessStatusCode) Debugger.Break();
-            response.EnsureSuccessStatusCode();
+        var response = await httpClient.GetAsync(url);
+        if (!response.IsSuccessStatusCode) Debugger.Break();
+        response.EnsureSuccessStatusCode();
 
-            var result = await response.Content.ReadFromJsonAsync<RestRoot<T>>();
-            return (result?.Values!, default!, result?.ContinuationToken!);
-        }
-        catch (Exception ex)
-        {
-            return (default!, ex, default!);
-        }
+        var result = await response.Content.ReadFromJsonAsync<RestRoot<T>>();
+        return (result?.Values!, result?.ContinuationUrl!);
 
         string CombineQuerystring()
         {
@@ -57,166 +50,166 @@ public partial class RestHelper<T> : IRestHelper<T> where T : new()
     }
 
 
-    public async Task<RestResult<T?>> GetOneAsync(T model)
+    public async Task<T?> GetOneAsync(T model)
     {
-        try
-        {
-            if (!ModelValid<T?>(model, out var error))
-            {
-                return error;
-            }
+        ModelValid<T?>(model);
 
-            var url = ConstructUrl(model);
-            Trace.WriteLine($"{nameof(GetOneAsync)} URL:{url}");
+        var url = ConstructUrl(model);
+        Trace.WriteLine($"{nameof(GetOneAsync)} URL:{url}");
 
-            var response = await httpClient.GetAsync(url);
-            if (!response.IsSuccessStatusCode) Debugger.Break();
-            response.EnsureSuccessStatusCode();
+        var response = await httpClient.GetAsync(url);
+        if (!response.IsSuccessStatusCode) Debugger.Break();
+        response.EnsureSuccessStatusCode();
 
-            var result = await response.Content.ReadFromJsonAsync<RestRoot<T>>();
-            return result!.Values.SingleOrDefault();
-        }
-        catch (Exception ex)
-        {
-            return ex;
-        }
+        var result = await response.Content.ReadFromJsonAsync<RestRoot<T>>();
+        return result!.Values.SingleOrDefault();
     }
 
-    public async IAsyncEnumerable<(T model, RestResult<T> Result)> InsertAsync(IEnumerable<T> models)
+    public async IAsyncEnumerable<(T Input, T? Result, Exception? Error)> InsertAsync(IEnumerable<T> models)
     {
         foreach (var model in models)
         {
-            yield return (model, await InsertAsync(model));
+            yield return await RunAsync(model);
         }
-    }
 
-    public async Task<RestResult<T>> InsertAsync(T model)
-    {
-        try
+        async Task<(T model, T? Result, Exception? Error)> RunAsync(T model)
         {
-            if (!ModelValid<T>(model, out var error))
+            try
             {
-                return error;
+                return (model, await InsertAsync(model), default);
             }
+            catch (Exception ex)
+            {
 
-            Trace.WriteLine($"{nameof(InsertAsync)} URL:{baseUri}");
-
-            var clone = Clone(model, removeKeys: false);
-
-            var response = await httpClient.PostAsJsonAsync(baseUri, clone);
-            if (!response.IsSuccessStatusCode) Debugger.Break();
-            response.EnsureSuccessStatusCode();
-
-            var result = await response.Content.ReadFromJsonAsync<RestRoot<T>>();
-            return result!.Values.Single();
+                return (model, default, ex);
+            }
         }
-        catch (Exception ex)
-        {
-            return ex;
-        }
-
     }
 
-    public async IAsyncEnumerable<(T Model, RestResult<T> Result)> UpsertAsync(IEnumerable<T> models)
+    public async Task<T> InsertAsync(T model)
+    {
+        ModelValid<T>(model);
+
+        Trace.WriteLine($"{nameof(InsertAsync)} URL:{baseUri}");
+
+        var clone = Clone(model, removeKeys: false);
+
+        var response = await httpClient.PostAsJsonAsync(baseUri, clone);
+        if (!response.IsSuccessStatusCode) Debugger.Break();
+        response.EnsureSuccessStatusCode();
+
+        var result = await response.Content.ReadFromJsonAsync<RestRoot<T>>();
+        return result!.Values.Single();
+    }
+
+    public async IAsyncEnumerable<(T Input, T? Result, Exception? Error)> UpsertAsync(IEnumerable<T> models)
     {
         foreach (var model in models)
         {
-            yield return (model, await UpsertAsync(model));
+            yield return await RunAsync(model);
         }
-    }
 
-    public async Task<RestResult<T>> UpsertAsync(T model)
-    {
-        try
+        async Task<(T model, T? Result, Exception? Error)> RunAsync(T model)
         {
-            if (!ModelValid<T>(model, out var error))
+            try
             {
-                return error;
+                return (model, await UpsertAsync(model), default);
             }
+            catch (Exception ex)
+            {
 
-            var url = ConstructUrl(model);
-            Trace.WriteLine($"{nameof(UpsertAsync)} URL:{url}");
-
-            var clone = Clone(model);
-
-            var response = await httpClient.PutAsJsonAsync(url, clone);
-            if (!response.IsSuccessStatusCode) Debugger.Break();
-            response.EnsureSuccessStatusCode();
-
-            var result = await response.Content.ReadFromJsonAsync<RestRoot<T>>();
-            return result!.Values.Single();
-        }
-        catch (Exception ex)
-        {
-            return ex;
+                return (model, default, ex);
+            }
         }
     }
 
-    public async IAsyncEnumerable<(T Model, RestResult<T> Result)> UpdateAsync(IEnumerable<T> models)
+    public async Task<T> UpsertAsync(T model)
+    {
+        ModelValid<T>(model);
+
+        var url = ConstructUrl(model);
+        Trace.WriteLine($"{nameof(UpsertAsync)} URL:{url}");
+
+        var clone = Clone(model);
+
+        var response = await httpClient.PutAsJsonAsync(url, clone);
+        if (!response.IsSuccessStatusCode) Debugger.Break();
+        response.EnsureSuccessStatusCode();
+
+        var result = await response.Content.ReadFromJsonAsync<RestRoot<T>>();
+        return result!.Values.Single();
+    }
+
+    public async IAsyncEnumerable<(T Input, T? Result, Exception? Error)> UpdateAsync(IEnumerable<T> models)
     {
         foreach (var model in models)
         {
-            yield return (model, await UpdateAsync(model));
+            yield return await RunAsync(model);
         }
-    }
 
-    public async Task<RestResult<T>> UpdateAsync(T model)
-    {
-        try
+        async Task<(T model, T? Result, Exception? Error)> RunAsync(T model)
         {
-            if (!ModelValid<T>(model, out var error))
+            try
             {
-                return error;
+                return (model, await UpdateAsync(model), default);
             }
+            catch (Exception ex)
+            {
 
-            var url = ConstructUrl(model);
-            Trace.WriteLine($"{nameof(UpdateAsync)} URL:{url}");
-
-            var clone = Clone(model);
-
-            var response = await httpClient.PatchAsJsonAsync(url, clone);
-            if (!response.IsSuccessStatusCode) Debugger.Break();
-            response.EnsureSuccessStatusCode();
-
-            var result = await response.Content.ReadFromJsonAsync<RestRoot<T>>();
-            return result!.Values.Single();
-        }
-        catch (Exception ex)
-        {
-            return ex;
+                return (model, default, ex);
+            }
         }
     }
 
-    public async Task DeleteAsync(IEnumerable<T> models)
+    public async Task<T> UpdateAsync(T model)
+    {
+        ModelValid<T>(model);
+
+        var url = ConstructUrl(model);
+        Trace.WriteLine($"{nameof(UpdateAsync)} URL:{url}");
+
+        var clone = Clone(model);
+
+        var response = await httpClient.PatchAsJsonAsync(url, clone);
+        if (!response.IsSuccessStatusCode) Debugger.Break();
+        response.EnsureSuccessStatusCode();
+
+        var result = await response.Content.ReadFromJsonAsync<RestRoot<T>>();
+        return result!.Values.Single();
+    }
+
+    public async IAsyncEnumerable<(T Input, Exception? Error)> DeleteAsync(IEnumerable<T> models)
     {
         foreach (var model in models)
         {
-            await DeleteAsync(model);
+            yield return await RunAsync(model);
+        }
+
+        async Task<(T model, Exception? Error)> RunAsync(T model)
+        {
+            try
+            {
+                await DeleteAsync(model);
+                return (model, default);
+            }
+            catch (Exception ex)
+            {
+
+                return (model, ex);
+            }
         }
     }
 
-    public async Task<RestResult<bool>> DeleteAsync(T model)
+    public async Task DeleteAsync(T model)
     {
-        try
-        {
-            if (!ModelValid<bool>(model, out var error))
-            {
-                return error;
-            }
+        ModelValid<bool>(model);
 
-            var url = ConstructUrl(model);
-            Trace.WriteLine($"{nameof(DeleteAsync)} URL:{url}");
+        var url = ConstructUrl(model);
+        Trace.WriteLine($"{nameof(DeleteAsync)} URL:{url}");
 
-            var response = await httpClient.DeleteAsync(url);
-            if (!response.IsSuccessStatusCode) Debugger.Break();
-            response.EnsureSuccessStatusCode();
-
-            return true;
-        }
-        catch (Exception ex)
-        {
-            return ex;
-        }
+        var response = await httpClient.DeleteAsync(url);
+        if (!response.IsSuccessStatusCode) Debugger.Break();
+        response.EnsureSuccessStatusCode();
     }
 
     private IEnumerable<(string Name, string Value)> GetKeyPropertiesWithValues(T model)
@@ -254,7 +247,7 @@ public partial class RestHelper<T> : IRestHelper<T> where T : new()
             var value = HttpUtility.UrlEncode(key.Value.ToString());
             builder.Append($"/{name}/{value}");
         }
-        
+
         return builder.ToString();
     }
 
@@ -292,27 +285,23 @@ public partial class RestHelper<T> : IRestHelper<T> where T : new()
         }
     }
 
-    private bool ModelValid<TResult>(T model, out Exception error)
+    private void ModelValid<TResult>(T model)
     {
-        error = null!;
-
         if (model is null)
         {
-            error = new ArgumentNullException(nameof(model));
+            throw new ArgumentNullException(nameof(model));
         }
 
         var keys = GetKeyPropertiesWithValues(model);
 
         if (!keys.Any())
         {
-            error = new ArgumentException("At least one key is required.");
+            throw new ArgumentException("At least one key is required.");
         }
 
         if (keys.Any(x => string.IsNullOrEmpty(x.Value)))
         {
-            error = new ArgumentException($"All keys must have values in: {typeof(T)}", nameof(model));
+            throw new ArgumentException($"All keys must have values in: {typeof(T)}", nameof(model));
         }
-
-        return error is null;
     }
 }
