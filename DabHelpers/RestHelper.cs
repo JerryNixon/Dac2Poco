@@ -49,12 +49,9 @@ public partial class RestHelper<T> : IRestHelper<T> where T : new()
         }
     }
 
-
     public async Task<T?> GetOneAsync(T model)
     {
-        ModelValid<T?>(model);
-
-        var url = ConstructUrl(model);
+        var url = ModelToValidUrl(model);
         Trace.WriteLine($"{nameof(GetOneAsync)} URL:{url}");
 
         var response = await httpClient.GetAsync(url);
@@ -80,7 +77,6 @@ public partial class RestHelper<T> : IRestHelper<T> where T : new()
             }
             catch (Exception ex)
             {
-
                 return (model, default, ex);
             }
         }
@@ -88,12 +84,10 @@ public partial class RestHelper<T> : IRestHelper<T> where T : new()
 
     public async Task<T> InsertAsync(T model)
     {
-        ModelValid<T>(model);
-
+        ModelValid(model);
         Trace.WriteLine($"{nameof(InsertAsync)} URL:{baseUri}");
 
         var clone = Clone(model, removeKeys: false);
-
         var response = await httpClient.PostAsJsonAsync(baseUri, clone);
         if (!response.IsSuccessStatusCode) Debugger.Break();
         response.EnsureSuccessStatusCode();
@@ -117,7 +111,6 @@ public partial class RestHelper<T> : IRestHelper<T> where T : new()
             }
             catch (Exception ex)
             {
-
                 return (model, default, ex);
             }
         }
@@ -125,13 +118,10 @@ public partial class RestHelper<T> : IRestHelper<T> where T : new()
 
     public async Task<T> UpsertAsync(T model)
     {
-        ModelValid<T>(model);
-
-        var url = ConstructUrl(model);
+        var url = ModelToValidUrl(model);
         Trace.WriteLine($"{nameof(UpsertAsync)} URL:{url}");
 
         var clone = Clone(model);
-
         var response = await httpClient.PutAsJsonAsync(url, clone);
         if (!response.IsSuccessStatusCode) Debugger.Break();
         response.EnsureSuccessStatusCode();
@@ -155,7 +145,6 @@ public partial class RestHelper<T> : IRestHelper<T> where T : new()
             }
             catch (Exception ex)
             {
-
                 return (model, default, ex);
             }
         }
@@ -163,13 +152,10 @@ public partial class RestHelper<T> : IRestHelper<T> where T : new()
 
     public async Task<T> UpdateAsync(T model)
     {
-        ModelValid<T>(model);
-
-        var url = ConstructUrl(model);
+        var url = ModelToValidUrl(model);
         Trace.WriteLine($"{nameof(UpdateAsync)} URL:{url}");
 
         var clone = Clone(model);
-
         var response = await httpClient.PatchAsJsonAsync(url, clone);
         if (!response.IsSuccessStatusCode) Debugger.Break();
         response.EnsureSuccessStatusCode();
@@ -194,7 +180,6 @@ public partial class RestHelper<T> : IRestHelper<T> where T : new()
             }
             catch (Exception ex)
             {
-
                 return (model, ex);
             }
         }
@@ -202,9 +187,7 @@ public partial class RestHelper<T> : IRestHelper<T> where T : new()
 
     public async Task DeleteAsync(T model)
     {
-        ModelValid<bool>(model);
-
-        var url = ConstructUrl(model);
+        var url = ModelToValidUrl(model);
         Trace.WriteLine($"{nameof(DeleteAsync)} URL:{url}");
 
         var response = await httpClient.DeleteAsync(url);
@@ -220,45 +203,14 @@ public partial class RestHelper<T> : IRestHelper<T> where T : new()
             .Select(x => (x.Name, x.GetValue(model)?.ToString() ?? string.Empty));
     }
 
-    private string ConstructUrl(T model)
-    {
-        var keys = GetKeyPropertiesWithValues(model);
-
-        if (!keys.Any())
-        {
-            throw new ArgumentException($"No keys defined in {typeof(T)}.");
-        }
-
-        foreach (var error in keys.Where(x => string.IsNullOrEmpty(x.Value)))
-        {
-            throw new ArgumentException($"Key property {error.Value} has no value.");
-        }
-
-        return ConstructUrl(keys.Select(x => (x.Name, x.Value)).ToArray());
-    }
-
-    private string ConstructUrl(params (string Name, string Value)[] keys)
-    {
-        var builder = new StringBuilder(baseUri);
-
-        foreach (var key in keys)
-        {
-            var name = HttpUtility.UrlEncode(key.Name);
-            var value = HttpUtility.UrlEncode(key.Value.ToString());
-            builder.Append($"/{name}/{value}");
-        }
-
-        return builder.ToString();
-    }
-
     private object Clone(T model, bool removeKeys = true, bool removeComputedColumns = true)
     {
         ArgumentNullException.ThrowIfNull(model);
 
         var props = model.GetType()
             .GetProperties(BindingFlags.Public | BindingFlags.Instance)
-            .Except(GetKeyProperties())
-            .Except(GetReadonlyProperties());
+            .Except(KeyProperties())
+            .Except(ReadonlyProperties());
 
         var clone = new ExpandoObject() as IDictionary<string, Object>;
 
@@ -269,7 +221,7 @@ public partial class RestHelper<T> : IRestHelper<T> where T : new()
 
         return clone;
 
-        IEnumerable<PropertyInfo> GetReadonlyProperties()
+        IEnumerable<PropertyInfo> ReadonlyProperties()
         {
             return typeof(T)
                 .GetProperties(BindingFlags.Public | BindingFlags.Instance)
@@ -277,7 +229,7 @@ public partial class RestHelper<T> : IRestHelper<T> where T : new()
                     && (p.GetCustomAttributes(typeof(DatabaseGeneratedAttribute), true).FirstOrDefault()! as DatabaseGeneratedAttribute)?.DatabaseGeneratedOption == DatabaseGeneratedOption.Computed);
         }
 
-        IEnumerable<PropertyInfo> GetKeyProperties()
+        IEnumerable<PropertyInfo> KeyProperties()
         {
             return typeof(T)
                 .GetProperties(BindingFlags.Public | BindingFlags.Instance)
@@ -285,12 +237,9 @@ public partial class RestHelper<T> : IRestHelper<T> where T : new()
         }
     }
 
-    private void ModelValid<TResult>(T model)
+    private IEnumerable<(string Name, string Value)> ModelValid(T model)
     {
-        if (model is null)
-        {
-            throw new ArgumentNullException(nameof(model));
-        }
+        ArgumentNullException.ThrowIfNull(nameof(model));
 
         var keys = GetKeyPropertiesWithValues(model);
 
@@ -303,5 +252,23 @@ public partial class RestHelper<T> : IRestHelper<T> where T : new()
         {
             throw new ArgumentException($"All keys must have values in: {typeof(T)}", nameof(model));
         }
+
+        return keys;
+    }
+
+    private string ModelToValidUrl(T model)
+    {
+        var keys = ModelValid(model);
+
+        var builder = new StringBuilder(baseUri);
+
+        foreach (var key in keys)
+        {
+            var name = HttpUtility.UrlEncode(key.Name);
+            var value = HttpUtility.UrlEncode(key.Value.ToString());
+            builder.Append($"/{name}/{value}");
+        }
+
+        return builder.ToString();
     }
 }

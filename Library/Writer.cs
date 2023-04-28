@@ -3,6 +3,7 @@ using Dac2Poco.Procedures;
 using Dac2Poco.Tables;
 using Dac2Poco.Views;
 
+using System.Data.Common;
 using System.Reflection.PortableExecutable;
 using System.Security.Claims;
 using System.Text;
@@ -79,15 +80,20 @@ public class Writer
         {
             if (table.Columns.Any(x => x.IsPrimaryKey))
             {
-                var key = table.Columns.First(x => x.IsPrimaryKey);
-                code.AppendLine($"    [DebuggerDisplay(\"{table.Name}.{key.Name} = {{{key.Name}}}\")]");
+                var keysNameValue = string.Join(", ", table.Columns.Where(x => x.IsPrimaryKey).Select(x => $"{x.Name} = {{{x.Name}}}"));
+                code.AppendLine($"    [DebuggerDisplay(\"{table.Schema}.{table.Name} ({keysNameValue})\")]");
+            }
+            else
+            {
+                code.AppendLine($"    [Keyless] // View");
+                code.AppendLine($"    [DebuggerDisplay(\"{table.Schema}.{table.Name}\")]");
             }
 
             code.AppendLine($"    [Table(\"{table.Name}\", Schema = \"{table.Schema}\")]");
         }
 
         var baseText = (baseName is not null) ? $" : {baseName}" : string.Empty;
-        code.AppendLine($"    public partial class {table.Name}{baseText}");
+        code.AppendLine($"    public partial class {ToPascalCase(table.Name)}{baseText}");
         code.AppendLine("    {");
 
         foreach (var column in table.Columns.Where(x => !x.IsGraph))
@@ -126,8 +132,13 @@ public class Writer
             {
                 code.AppendLine("        [DatabaseGenerated(DatabaseGeneratedOption.Identity)]");
             }
+            var propName = ToPascalCase(column.Name);
             if (attributes)
             {
+                if (propName != column.Name)
+                {
+                    code.AppendLine($"        [JsonPropertyName(\"{column.Name}\")]");
+                }
                 var typeName = column.IsComputed ? "Computed" : column.SqlType;
                 code.AppendLine($"        [Column(\"{column.Name}\", TypeName = \"{typeName}\")]");
             }
@@ -135,7 +146,7 @@ public class Writer
             var set = column.IsComputed ? string.Empty : " set;";
             var inlineType = column.IsComputed ? "string" : netTypeText;
             var def = column.IsNullable ? "default!" : netType == typeof(System.String) ? "string.Empty" : "default";
-            code.AppendLine($"        public {inlineType} @{column.Name} {{ get;{set} }} = {def};");
+            code.AppendLine($"        public {inlineType} @{propName} {{ get;{set} }} = {def};");
         }
 
         code.AppendLine("    }");
@@ -145,11 +156,13 @@ public class Writer
     {
         if (attributes)
         {
-            code.AppendLine($"    [Table(\"{view.Name}\", Schema = \"{view.Schema}\")] // View");
+            code.AppendLine($"    [Keyless] // View");
+            code.AppendLine($"    [DebuggerDisplay(\"{view.Schema}.{view.Name}\")]");
+            code.AppendLine($"    [Table(\"{view.Name}\", Schema = \"{view.Schema}\")]");
         }
 
         var baseText = (baseName is not null) ? $" : {baseName}" : string.Empty;
-        code.AppendLine($"    public partial class {view.Name}{baseText}");
+        code.AppendLine($"    public partial class {ToPascalCase(view.Name)}{baseText}");
         code.AppendLine("    {");
 
         foreach (var column in view.Columns)
@@ -159,13 +172,34 @@ public class Writer
 
             if (attributes && column != view.Columns.First()) code.AppendLine();
 
+            var propName = ToPascalCase(column.Name);
             if (attributes)
             {
+                if (propName != column.Name)
+                {
+                    code.AppendLine($"        [JsonPropertyName(\"{column.Name}\")]");
+                }
                 code.AppendLine($"        [Column(\"{column.Name}\", TypeName = \"{column.SqlType}\")]");
             }
 
-            code.AppendLine($"        public {netType} @{column.Name} {{ get; set; }} = default!;");
+            code.AppendLine($"        public {netType} @{propName} {{ get; set; }} = default!;");
         }
         code.AppendLine("    }");
+    }
+
+    public static string ToPascalCase(string input)
+    {
+        string[] words = input.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+
+        for (int i = 0; i < words.Length; i++)
+        {
+            string word = words[i];
+            if (word.Length > 0)
+            {
+                words[i] = char.ToUpper(word[0]) + word.Substring(1).ToLower();
+            }
+        }
+
+        return string.Join("", words);
     }
 }
