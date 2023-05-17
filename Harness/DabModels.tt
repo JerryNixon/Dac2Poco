@@ -26,40 +26,43 @@ namespace Models
 <#
     var Cache = GetCache(connectionString);
     foreach (var schema in Cache.Select(x => x.Schema).Distinct()) { 
-    var objects = Cache
-        .Where(x => x.Schema == schema)
-        .Select(x => new { x.Name, x.Type })
-        .OrderBy(x => x.Type)
-        .Distinct();
+    var objects = Cache.Where(x => x.Schema == schema).Select(x => new { x.Name, x.Type }).OrderBy(x => x.Type).Distinct();
 #>
 namespace Models.<#= schema #>
 {
 <#
+    // looping through tables, views, procs
     foreach (var dbo in objects) { 
     var columns = Cache.Where(x => x.Schema == schema && x.Name == dbo.Name).OrderByDescending(x => x.IsKey).ThenBy(x => x.IsComputed);
+
+    // building the debugger display string
     var keys = columns.Where(x => x.IsKey).Select(x => $"{x.Column} = {{{x.Column}}}");
     var pars = columns.SelectMany(x => x.Params).Where(x => !string.IsNullOrEmpty(x)).Select(x => $"{x} = {{Parameters.{x}}}");
-    var infos = string.Join(", ", keys.Union(pars));
-    infos = (infos.Length == 0) ? "keyless" : infos;
+    var display = string.Join(", ", keys.Union(pars));
+    display = (display.Length == 0) ? "keyless" : display;
 #>
-    [DebuggerDisplay("<#= schema #>.<#= dbo.Name #> (<#=infos#>) [<#=dbo.Type#>]")]
+    [DebuggerDisplay("<#= schema #>.<#= dbo.Name #> (<#=display#>) [<#=dbo.Type#>]")]
     public class <#= Safe(dbo.Name) #> : Poco 
     {
-    <#foreach (var column in columns) { #>
+    <#
+        // looping through columns
+        foreach (var column in columns) 
+    {#>
     <#if (column.IsKey) 
     {#>[Key]
         <#}#><#if (column.IsComputed) {#>[ReadOnly(true)]
         <#}#>public <#=column.NetType#> <#=Safe(column.Column)#> { get; set; } = default!;
-    <#
-    }
-        // parameters sub class
+    <#}
+        // this section is only valid for procedures
         var parameters = Cache.Where(x => x.Schema == schema && x.Name == dbo.Name).SelectMany(x => x.Params.Zip(x.ParamNetTypes, (n, t) => new { Name = n, Type = t })).OrderBy(x => x.Name).Distinct();
         if (parameters.Where(x => x.Name != "").Any()) 
         {#>    public ParameterInfo Parameters { get; set; } = new();
 
         public class ParameterInfo
         {
-        <#foreach (var p in parameters) {#>    public <#=p.Type#> <#=Safe(p.Name)#> { get; set; } = default!;
+        <#
+            // looping through parameters
+            foreach (var p in parameters) {#>    public <#=p.Type#> <#=Safe(p.Name)#> { get; set; } = default!;
         <#}#>
 }
     }
@@ -67,8 +70,7 @@ namespace Models.<#= schema #>
 <#}#>
 
 <#}#>
-}<#
-}
+}<#}#><#+
 
 string Safe(string name) => "@" + name.Replace(" ", string.Empty).Trim('[', ']', '.', ' ');
 
@@ -78,8 +80,6 @@ IEnumerable<(string Schema, string Name, string @Type, string[] Params, string[]
     connection.Open();
 
     var command = new SqlCommand(GetSql(), connection);
-    command.CommandType = CommandType.Text;
-
     using (var reader = command.ExecuteReader(CommandBehavior.CloseConnection))
     {
         while (reader.Read())
