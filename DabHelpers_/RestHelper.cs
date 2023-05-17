@@ -18,7 +18,7 @@ public partial class RestHelper<T> : IRestHelper<T> where T : new()
 
     public RestHelper(string baseUri, HttpClient? httpClient = null)
     {
-        this.baseUri = Uri.TryCreate(baseUri, UriKind.Absolute, out _) ? baseUri : throw new ArgumentException("Uri invalid.", nameof(baseUri));
+        this.baseUri = Uri.TryCreate(baseUri, UriKind.Absolute, out var uri) ? uri.ToString() : throw new ArgumentException("Uri invalid.", nameof(baseUri));
         this.httpClient = httpClient ?? new();
     }
 
@@ -29,7 +29,11 @@ public partial class RestHelper<T> : IRestHelper<T> where T : new()
         Trace.WriteLine($"{nameof(GetManyAsync)} URL:{url}");
 
         var response = await httpClient.GetAsync(url);
-        if (!response.IsSuccessStatusCode) Debugger.Break();
+        if (!response.IsSuccessStatusCode)
+        {
+            Debugger.Break();
+        }
+
         response.EnsureSuccessStatusCode();
 
         var result = await response.Content.ReadFromJsonAsync<RestRoot<T>>();
@@ -39,11 +43,31 @@ public partial class RestHelper<T> : IRestHelper<T> where T : new()
         {
             var builder = new UriBuilder(baseUri);
             var query = HttpUtility.ParseQueryString(builder.Query);
-            if (!string.IsNullOrEmpty(select)) query["$select"] = select;
-            if (!string.IsNullOrEmpty(filter)) query["$filter"] = filter;
-            if (!string.IsNullOrEmpty(orderby)) query["$orderby"] = orderby;
-            if (first.HasValue) query["$first"] = first.Value.ToString();
-            if (after.HasValue) query["$after"] = after.Value.ToString();
+            if (!string.IsNullOrEmpty(select))
+            {
+                query["$select"] = select;
+            }
+
+            if (!string.IsNullOrEmpty(filter))
+            {
+                query["$filter"] = filter;
+            }
+
+            if (!string.IsNullOrEmpty(orderby))
+            {
+                query["$orderby"] = orderby;
+            }
+
+            if (first.HasValue)
+            {
+                query["$first"] = first.Value.ToString();
+            }
+
+            if (after.HasValue)
+            {
+                query["$after"] = after.Value.ToString();
+            }
+
             builder.Query = query.ToString();
             return builder.Uri.ToString();
         }
@@ -51,11 +75,17 @@ public partial class RestHelper<T> : IRestHelper<T> where T : new()
 
     public async Task<T?> GetOneAsync(T model)
     {
-        var url = ModelToValidUrl(model);
+        ArgumentNullException.ThrowIfNull(model);
+
+        var url = AssembleUrl(model);
         Trace.WriteLine($"{nameof(GetOneAsync)} URL:{url}");
 
         var response = await httpClient.GetAsync(url);
-        if (!response.IsSuccessStatusCode) Debugger.Break();
+        if (!response.IsSuccessStatusCode)
+        {
+            Debugger.Break();
+        }
+
         response.EnsureSuccessStatusCode();
 
         var result = await response.Content.ReadFromJsonAsync<RestRoot<T>>();
@@ -64,6 +94,8 @@ public partial class RestHelper<T> : IRestHelper<T> where T : new()
 
     public async IAsyncEnumerable<(T Input, T? Result, Exception? Error)> InsertAsync(IEnumerable<T> models)
     {
+        ArgumentNullException.ThrowIfNull(models);
+
         foreach (var model in models)
         {
             yield return await RunAsync(model);
@@ -84,12 +116,16 @@ public partial class RestHelper<T> : IRestHelper<T> where T : new()
 
     public async Task<T> InsertAsync(T model)
     {
-        ModelValid(model);
+        EnsureValidModel(model);
         Trace.WriteLine($"{nameof(InsertAsync)} URL:{baseUri}");
 
         var clone = Clone(model, removeKeys: false);
         var response = await httpClient.PostAsJsonAsync(baseUri, clone);
-        if (!response.IsSuccessStatusCode) Debugger.Break();
+        if (!response.IsSuccessStatusCode)
+        {
+            Debugger.Break();
+        }
+
         response.EnsureSuccessStatusCode();
 
         var result = await response.Content.ReadFromJsonAsync<RestRoot<T>>();
@@ -98,6 +134,8 @@ public partial class RestHelper<T> : IRestHelper<T> where T : new()
 
     public async IAsyncEnumerable<(T Input, T? Result, Exception? Error)> UpsertAsync(IEnumerable<T> models)
     {
+        ArgumentNullException.ThrowIfNull(models);
+       
         foreach (var model in models)
         {
             yield return await RunAsync(model);
@@ -116,14 +154,27 @@ public partial class RestHelper<T> : IRestHelper<T> where T : new()
         }
     }
 
+    public async Task<T> UpsertAsync(T model, params (string Name, string Value)[] keys)
+    {
+        return await UpsertAsync(model, baseUri + string.Join("/", keys.Select(x => $"{x.Name}/{x.Value}")));
+    }
+
     public async Task<T> UpsertAsync(T model)
     {
-        var url = ModelToValidUrl(model);
+        return await UpsertAsync(model, AssembleUrl(model));
+    }
+
+    private async Task<T> UpsertAsync(T model, string url)
+    {
         Trace.WriteLine($"{nameof(UpsertAsync)} URL:{url}");
 
         var clone = Clone(model);
         var response = await httpClient.PutAsJsonAsync(url, clone);
-        if (!response.IsSuccessStatusCode) Debugger.Break();
+        if (!response.IsSuccessStatusCode)
+        {
+            Debugger.Break();
+        }
+
         response.EnsureSuccessStatusCode();
 
         var result = await response.Content.ReadFromJsonAsync<RestRoot<T>>();
@@ -132,6 +183,8 @@ public partial class RestHelper<T> : IRestHelper<T> where T : new()
 
     public async IAsyncEnumerable<(T Input, T? Result, Exception? Error)> UpdateAsync(IEnumerable<T> models)
     {
+        ArgumentNullException.ThrowIfNull(models);
+
         foreach (var model in models)
         {
             yield return await RunAsync(model);
@@ -150,22 +203,45 @@ public partial class RestHelper<T> : IRestHelper<T> where T : new()
         }
     }
 
+    public async Task<T> UpdateAsync(T model, params (string Name, string Value)[] keys)
+    {
+        return await UpdateAsync(model, baseUri + string.Join("/", keys.Select(x => $"{x.Name}/{x.Value}")));
+    }
+
     public async Task<T> UpdateAsync(T model)
     {
-        var url = ModelToValidUrl(model);
+        return await UpdateAsync(model, AssembleUrl(model));
+    }
+
+    private async Task<T> UpdateAsync(T model, string url)
+    {
+        ArgumentNullException.ThrowIfNull(model);
+
         Trace.WriteLine($"{nameof(UpdateAsync)} URL:{url}");
 
         var clone = Clone(model);
         var response = await httpClient.PatchAsJsonAsync(url, clone);
-        if (!response.IsSuccessStatusCode) Debugger.Break();
+        if (!response.IsSuccessStatusCode)
+        {
+            Debugger.Break();
+        }
+
         response.EnsureSuccessStatusCode();
 
         var result = await response.Content.ReadFromJsonAsync<RestRoot<T>>();
         return result!.Values.Single();
     }
 
+    /// <summary>
+    /// For models without keys, manually supply the key/value pair(s)
+    /// </summary>
+    /// <param name="models"></param>
+    /// <returns>A list of (Input, Error) tuples.</returns>
+    /// <remarks>Exceptions are caught and returned in the result. Execution is not stopped.</remarks>
     public async IAsyncEnumerable<(T Input, Exception? Error)> DeleteAsync(IEnumerable<T> models)
     {
+        ArgumentNullException.ThrowIfNull(models);
+
         foreach (var model in models)
         {
             yield return await RunAsync(model);
@@ -185,18 +261,46 @@ public partial class RestHelper<T> : IRestHelper<T> where T : new()
         }
     }
 
+    /// <summary>
+    /// For models without keys, manually supply the key/value pair(s)
+    /// </summary>
+    /// <param name="model">The model with key and readonly properties removed.</param>
+    /// <param name="keys">The key/value pair of key(s)</param>
+    /// <returns></returns>
+    public async Task DeleteAsync(T model, params (string Name, string Value)[] keys)
+    {
+        await DeleteAsync(model, baseUri + string.Join("/", keys.Select(x => $"{x.Name}/{x.Value}")));
+    }
+
+    /// <summary>
+    /// For models with proper data attribution of properties with [Key] and [ComputerGenerated]
+    /// </summary>
+    /// <param name="model"></param>
+    /// <returns></returns>
     public async Task DeleteAsync(T model)
     {
-        var url = ModelToValidUrl(model);
+        await DeleteAsync(model, AssembleUrl(model));
+    }
+
+    private async Task DeleteAsync(T model, string url)
+    {
+        ArgumentNullException.ThrowIfNull(model);
+
         Trace.WriteLine($"{nameof(DeleteAsync)} URL:{url}");
 
         var response = await httpClient.DeleteAsync(url);
-        if (!response.IsSuccessStatusCode) Debugger.Break();
+        if (!response.IsSuccessStatusCode)
+        {
+            Debugger.Break();
+        }
+
         response.EnsureSuccessStatusCode();
     }
 
     private IEnumerable<(string Name, string Value)> GetKeyPropertiesWithValues(T model)
     {
+        ArgumentNullException.ThrowIfNull(model);
+
         return typeof(T)
             .GetProperties(BindingFlags.Public | BindingFlags.Instance)
             .Where(p => Attribute.IsDefined(p, typeof(KeyAttribute)))
@@ -237,7 +341,7 @@ public partial class RestHelper<T> : IRestHelper<T> where T : new()
         }
     }
 
-    private IEnumerable<(string Name, string Value)> ModelValid(T model)
+    private IEnumerable<(string Name, string Value)> EnsureValidModel(T model)
     {
         ArgumentNullException.ThrowIfNull(nameof(model));
 
@@ -256,9 +360,9 @@ public partial class RestHelper<T> : IRestHelper<T> where T : new()
         return keys;
     }
 
-    private string ModelToValidUrl(T model)
+    private string AssembleUrl(T model)
     {
-        var keys = ModelValid(model);
+        var keys = EnsureValidModel(model);
 
         var builder = new StringBuilder(baseUri);
 

@@ -13,9 +13,34 @@
   </ItemGroup>
 
   <ItemGroup>
+    <None Update="DabScripts.tt">
+      <LastGenOutput>DabScripts.g.cs</LastGenOutput>
+      <Generator>TextTemplatingFileGenerator</Generator>
+    </None>
     <None Update="sample.dacpac">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
+    <None Update="DabModels.tt">
+      <Generator>TextTemplatingFileGenerator</Generator>
+      <LastGenOutput>DabModels.g.cs</LastGenOutput>
+    </None>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Service Include="{508349b6-6b84-4df5-91f0-309beebad82d}" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Update="DabModels.g.cs">
+      <DesignTime>True</DesignTime>
+      <AutoGen>True</AutoGen>
+      <DependentUpon>DabModels.tt</DependentUpon>
+    </Compile>
+    <Compile Update="DabScripts.g.cs">
+      <DesignTime>True</DesignTime>
+      <AutoGen>True</AutoGen>
+      <DependentUpon>DabScripts.tt</DependentUpon>
+    </Compile>
   </ItemGroup>
 
 </Project>

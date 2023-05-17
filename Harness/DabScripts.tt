@@ -1,0 +1,11 @@
+﻿<#@ template    language="C#" #>
+<#@ assembly    name="System.Core" #>
+<#@ import      namespace="System.Linq" #>
+<#@ import      namespace="System.Text" #>
+<#@ assembly    name="System.Data" #>
+<#@ import      namespace="System.Data" #>
+<#@ import      namespace="System.Data.SqlClient" #>
+<#@ import      namespace="System.Collections.Generic" #>
+<#@ import      namespace="System.Collections" #>
+<#@ output      extension=".g.cs" #>
+// hello
