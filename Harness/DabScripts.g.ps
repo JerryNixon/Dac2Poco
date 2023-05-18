@@ -1,0 +1,26 @@
+﻿
+del dab-config.json
+
+dab init --config "dab-config.json" --graphql.disabled "true" --host-mode development --database-type mssql --set-session-context true --connection-string "Data Source=(localdb)\MSSQLLocalDB;Initial Catalog=DabDb;Integrated Security=True;Connect Timeout=60;Encrypt=False;TrustServerCertificate=False;ApplicationIntent=ReadWrite;MultiSubnetFailover=False"
+
+dab add "Customers" --config "dab-config.json" --source "[dbo].[Customers]" --source.type "table" --source.key-fields "Id" --rest "customers" --permissions "anonymous:create,read,update,delete"
+dab update "Customers" --config "dab-config.json" --map "City:city,Id:id,Location:location,Name:name,SpecialRank:specialrank,State:state"
+
+dab add "Lines" --config "dab-config.json" --source "[dbo].[Lines]" --source.type "table" --source.key-fields "Id" --rest "lines" --permissions "anonymous:create,read,update,delete"
+dab update "Lines" --config "dab-config.json" --map "Id:id,OrderId:orderid,PriceEach:priceeach,ProductId:productid,Quantity:quantity"
+
+dab add "Orders" --config "dab-config.json" --source "[dbo].[Orders]" --source.type "table" --source.key-fields "Id" --rest "orders" --permissions "anonymous:create,read,update,delete"
+dab update "Orders" --config "dab-config.json" --map "CustomerId:customerid,Date:date,Id:id"
+
+dab add "Products" --config "dab-config.json" --source "[dbo].[Products]" --source.type "table" --source.key-fields "Id" --rest "products" --permissions "anonymous:create,read,update,delete"
+dab update "Products" --config "dab-config.json" --map "Id:id,Name:name,Price:price"
+
+dab add "Sample" --config "dab-config.json" --source "[dbo].[Sample]" --source.type "table" --source.key-fields "Id1,Id2,Id3" --rest "sample" --permissions "anonymous:create,read,update,delete"
+dab update "Sample" --config "dab-config.json" --map "Id1:id1,Id2:id2,Id3:id3,Name:name,UpperName:uppername"
+
+dab add "SampleNode" --config "dab-config.json" --source "[dbo].[SampleNode]" --source.type "table" --source.key-fields "Id" --rest "samplenode" --permissions "anonymous:create,read,update,delete"
+dab update "SampleNode" --config "dab-config.json" --map "Id:id"
+
+dab add "PageCustomers" --config "dab-config.json" --source "[dbo].[PageCustomers]" --source.type "stored-procedure" --source.params "StartIndex:invalid,PageSize:invalid" --rest.methods "post,get" --rest "pagecustomers" --permissions "anonymous:execute"
+dab update "PageCustomers" --config "dab-config.json" --map "City:city,Id:id,Name:name,State:state"
+

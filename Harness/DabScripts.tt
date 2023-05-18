@@ -1,11 +1,176 @@
-﻿<#@ template    language="C#" #>
-<#@ assembly    name="System.Core" #>
-<#@ import      namespace="System.Linq" #>
-<#@ import      namespace="System.Text" #>
-<#@ assembly    name="System.Data" #>
-<#@ import      namespace="System.Data" #>
-<#@ import      namespace="System.Data.SqlClient" #>
-<#@ import      namespace="System.Collections.Generic" #>
-<#@ import      namespace="System.Collections" #>
-<#@ output      extension=".g.cs" #>
-// hello
+﻿<#
+    var connectionString = @"Data Source=(localdb)\MSSQLLocalDB;Initial Catalog=DabDb;Integrated Security=True;Connect Timeout=60;Encrypt=False;TrustServerCertificate=False;ApplicationIntent=ReadWrite;MultiSubnetFailover=False";
+#>
+<#@ template    language    ="C#" #>
+<#@ assembly    name        ="System.Core" #>
+<#@ import      namespace   ="System.Linq" #>
+<#@ import      namespace   ="System.Text" #>
+<#@ assembly    name        ="System.Data" #>
+<#@ import      namespace   ="System.Data" #>
+<#@ import      namespace   ="System.Data.SqlClient" #>
+<#@ import      namespace   ="System.Collections.Generic" #>
+<#@ import      namespace   ="System.Collections" #>
+<#@ output      extension   =".g.ps" #>
+
+del dab-config.json
+
+dab init --config "dab-config.json" --graphql.disabled "true" --host-mode development --database-type mssql --set-session-context true --connection-string "<#=connectionString#>"
+
+<#
+    var Cache = GetCache(connectionString);
+    var tables = Cache.Where(x => x.Type == "table" || x.Type == "view").Select(x => new { x.Name, x.Schema, x.Type }).Distinct();
+    foreach (var table in tables)
+    {
+        var columns = Cache.Where(x => x.Schema == table.Schema && x.Name == table.Name);
+        var pks = columns.Where(x => x.IsKey);
+        if (!pks.Any()) continue;
+        // if (!pks.Any()) pks = columns.Where(x => x.Column.ToLower().EndsWith("id"));
+        var keys = string.Join(",", pks.Select(x => $"{x.Column}"));
+        var map = string.Join(",", columns.Select(x => $"{x.Column}:{GetJsonName(x.Column)}"));
+        var label = (Cache.Select(x => x.Schema).Distinct().Count() == 1) ? table.Name : $"{table.Schema}/{table.Name}";
+        var rest = (Cache.Select(x => x.Schema).Distinct().Count() == 1) ? table.Name.ToLower() : $"{table.Schema.ToLower()}/{table.Name.ToLower()}";
+#>
+dab add "<#=label#>" --config "dab-config.json" --source "[<#=table.Schema#>].[<#=table.Name#>]" --source.type "table" --source.key-fields "<#=keys#>" --rest "<#=rest#>" --permissions "anonymous:create,read,update,delete"
+dab update "<#=label#>" --config "dab-config.json" --map "<#=map#>"
+
+<#}
+    var procs = Cache.Where(x => x.Type == "procedure").Select(x => new { x.Name, x.Schema }).Distinct();
+    foreach (var proc in procs)
+    {
+        var label = (Cache.Select(x => x.Schema).Distinct().Count() == 1) ? proc.Name : $"{proc.Schema}/{proc.Name}";
+        var rest = (Cache.Select(x => x.Schema).Distinct().Count() == 1) ? proc.Name.ToLower() : $"{proc.Schema.ToLower()}/{proc.Name.ToLower()}";
+        var columns = Cache.Where(x => x.Schema == proc.Schema && x.Name == proc.Name);
+        var map = string.Join(",", columns.Select(x => $"{x.Column}:{GetJsonName(x.Column)}"));
+        var parms = string.Join(",", Cache.First(x => x.Schema == proc.Schema && x.Name == proc.Name).Params.Select(x => $"{x}:invalid"));
+        
+#>
+dab add "<#=label#>" --config "dab-config.json" --source "[<#=proc.Schema#>].[<#=proc.Name#>]" --source.type "stored-procedure" --source.params "<#=parms#>" --rest.methods "post,get" --rest "<#=rest#>" --permissions "anonymous:execute"
+dab update "<#=label#>" --config "dab-config.json" --map "<#=map#>"
+
+<#
+    }#><#+
+
+string GetJsonName(string name) => name.Trim('[', ']', '.').ToLower().Replace(" ", string.Empty);
+
+IEnumerable<(string Schema, string Name, string @Type, string[] Params, string[] ParamSqlTypes, string[] ParamNetTypes, string Column, string SqlType, string NetType, bool IsKey, bool IsComputed)> GetCache(string connectionString)
+{
+    var connection = new SqlConnection(connectionString);
+    connection.Open();
+
+    var command = new SqlCommand(GetSql(), connection);
+    using (var reader = command.ExecuteReader(CommandBehavior.CloseConnection))
+    {
+        while (reader.Read())
+        {
+            var schema = reader["schema_name"].ToString();
+            var name = reader["object_name"].ToString();
+            var type = reader["object_type"].ToString();
+            var column = reader["column_name"].ToString();
+            var @params = reader["parameter_names"]?.ToString().Split(',');
+            var paramSqlTypes = reader["parameter_sql_types"]?.ToString().Split(',');
+            var paramNetTypes = reader["parameter_net_types"]?.ToString().Split(',');
+            var sqlType = reader["column_sql_type"].ToString();
+            var netType = reader["column_net_type"].ToString().Replace("string?", "string");
+            var isKey = bool.Parse(reader["primary_key"].ToString());
+            var isComputed = bool.Parse(reader["is_computed"].ToString());
+
+            yield return (schema, name, type, @params, paramSqlTypes, paramNetTypes, column, sqlType, netType, isKey, isComputed);
+        }
+    }
+}
+
+string GetSql() => """
+;WITH types AS (                                                                                                                       
+    SELECT                                                                                                                             
+        system_type_id,                                                                                                                
+        CASE                                                                                                                           
+            WHEN system_type_id IN (34, 35, 99, 173, 165, 167, 175, 231, 239) THEN 'string'                                            
+            WHEN system_type_id IN (36, 189) THEN 'Guid'                                                                               
+            WHEN system_type_id IN (48) THEN 'byte'                                                                                    
+            WHEN system_type_id IN (52) THEN 'short'                                                                                   
+            WHEN system_type_id IN (56) THEN 'int'                                                                                     
+            WHEN system_type_id IN (58, 61) THEN 'DateTime'                                                                            
+            WHEN system_type_id IN (59, 62, 106, 108, 122) THEN 'decimal'                                                              
+            WHEN system_type_id IN (60, 127) THEN 'double'                                                                             
+            WHEN system_type_id IN (98) THEN 'object'                                                                                  
+            WHEN system_type_id IN (104) THEN 'bool'                                                                                   
+            WHEN system_type_id IN (241) THEN 'Xml'                                                                                    
+            ELSE 'unknown'                                                                                                             
+        END AS net_type                                                                                                                
+    FROM sys.types                                                                                                                     
+)                                                                                                                                      
+, procedures AS                                                                                                                        
+(                                                                                                                                      
+SELECT                                                                                                                               
+    s.name AS schema_name,                                                                                                           
+    p.name AS object_name,                                                                                                           
+    'procedure' AS object_type,                                                                                                      
+    STRING_AGG(REPLACE(d.name, '@', ''), ',') AS parameter_names,                                                                    
+    STRING_AGG(t.name, ',') AS parameter_sql_types,                                                                                  
+    STRING_AGG(CONCAT(ttypes.net_type, CASE WHEN t.is_nullable = 1 THEN '?' ELSE '' END), ',') AS parameter_net_types                
+FROM sys.procedures p                                                                                                                
+JOIN sys.schemas s ON p.schema_id = s.schema_id                                                                                      
+JOIN sys.parameters d ON d.name = d.name                                                                                             
+JOIN sys.types t ON d.system_type_id = t.system_type_id                                                                              
+JOIN types AS ttypes ON ttypes.system_type_id = t.system_type_id                                                                     
+WHERE p.is_ms_shipped = 0                                                                                                            
+GROUP BY s.name, p.name                                                                                                              
+)                                                                                                                                      
+SELECT                                                                                                                                 
+    p.schema_name,                                                                                                                     
+    p.object_name,                                                                                                                     
+    p.object_type,                                                                                                                     
+    p.parameter_names,                                                                                                                 
+    p.parameter_sql_types,                                                                                                             
+    p.parameter_net_types,                                                                                                             
+    r.name as column_name,                                                                                                             
+    TYPE_NAME(r.system_type_id) AS column_sql_type,                                                                                    
+    CONCAT(rtypes.net_type, CASE WHEN r.is_nullable = 1 THEN '?' ELSE '' END) AS column_net_type,                                      
+    'false' AS primary_key,                                                                                                            
+    'false' AS is_computed                                                                                                             
+FROM procedures AS p                                                                                                                   
+CROSS APPLY sys.dm_exec_describe_first_result_set(N'EXEC ' + QUOTENAME(p.schema_name) + '.' + QUOTENAME(p.object_name), NULL, 0) AS r 
+JOIN types AS rtypes ON rtypes.system_type_id = r.system_type_id                                                                       
+                                                                                                                                        
+UNION                                                                                                                                  
+                                       
+SELECT
+    s.name AS schema_name,
+    t.name AS object_name,
+    'table' AS object_type,
+    NULL, NULL, NULL,
+    c.name AS column_name,
+    TYPE_NAME(c.system_type_id) AS column_sql_type,
+    CONCAT(ctypes.net_type, CASE WHEN c.is_nullable = 1 THEN '?' ELSE '' END) AS column_net_type,    
+    CASE WHEN ic.column_id IS NOT NULL THEN 'true' ELSE 'false' END AS primary_key,
+    CASE WHEN cc.name IS NOT NULL THEN 'true' ELSE 'false' END AS is_computed
+FROM sys.tables t
+JOIN sys.schemas s ON t.schema_id = s.schema_id
+JOIN sys.columns c ON t.object_id = c.object_id
+JOIN types AS ctypes ON ctypes.system_type_id = c.system_type_id                                                                       
+LEFT JOIN sys.indexes i ON i.object_id = t.object_id AND i.is_primary_key = 1
+LEFT JOIN sys.index_columns ic ON ic.object_id = t.object_id AND ic.index_id = i.index_id AND ic.column_id = c.column_id
+LEFT JOIN sys.computed_columns cc ON c.object_id = cc.object_id AND c.column_id = cc.column_id
+WHERE c.graph_type IS NULL 
+
+UNION                                                                                                                                  
+
+                                                                                                                                        
+SELECT                                                                                                                                 
+    s.name AS schema_name,                                                                                                             
+    v.name AS object_name,                                                                                                             
+    'view' AS object_type,                                                                                                             
+    NULL, NULL, NULL,                                                                                                                  
+    c.name AS column_name,                                                                                                             
+    TYPE_NAME(c.system_type_id) AS column_sql_type,                                                                                    
+    CONCAT(ctypes.net_type, CASE WHEN c.is_nullable = 1 THEN '?' ELSE '' END) AS column_net_type,                                      
+    CASE WHEN pkc.name IS NOT NULL THEN 'true' ELSE 'false' END AS primary_key,                                                        
+    CASE WHEN cc.name IS NOT NULL THEN 'true' ELSE 'false' END AS is_computed                                                          
+FROM sys.views v                                                                                                                       
+JOIN sys.schemas s ON v.schema_id = s.schema_id                                                                                        
+JOIN sys.columns c ON v.object_id = c.object_id                                                                                        
+JOIN types AS ctypes ON ctypes.system_type_id = c.system_type_id                                                                       
+LEFT JOIN sys.key_constraints pkc ON c.object_id = pkc.parent_object_id AND c.column_id = pkc.unique_index_id                          
+LEFT JOIN sys.computed_columns cc ON c.object_id = cc.object_id AND c.column_id = cc.column_id;                                       
+""";
+#>

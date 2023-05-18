@@ -8,13 +8,26 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Include="DabScripts.g.ps">
+      <DesignTime>True</DesignTime>
+      <AutoGen>True</AutoGen>
+      <DependentUpon>DabScripts.tt</DependentUpon>
+    </Compile>
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\DabHelpers\DabHelpers.csproj" />
     <ProjectReference Include="..\Library\Dac2Poco.csproj" />
   </ItemGroup>
 
   <ItemGroup>
+    <None Update="DabScripts.g.ps">
+      <DesignTime>True</DesignTime>
+      <AutoGen>True</AutoGen>
+      <DependentUpon>DabScripts.tt</DependentUpon>
+    </None>
     <None Update="DabScripts.tt">
-      <LastGenOutput>DabScripts.g.cs</LastGenOutput>
+      <LastGenOutput>DabScripts.g.ps</LastGenOutput>
       <Generator>TextTemplatingFileGenerator</Generator>
     </None>
     <None Update="sample.dacpac">
@@ -35,11 +48,6 @@
       <DesignTime>True</DesignTime>
       <AutoGen>True</AutoGen>
       <DependentUpon>DabModels.tt</DependentUpon>
-    </Compile>
-    <Compile Update="DabScripts.g.cs">
-      <DesignTime>True</DesignTime>
-      <AutoGen>True</AutoGen>
-      <DependentUpon>DabScripts.tt</DependentUpon>
     </Compile>
   </ItemGroup>
 

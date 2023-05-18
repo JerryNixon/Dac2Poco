@@ -15,6 +15,12 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VSIXProject2", "..\JerrysFi
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VSIXProjectPocoGenerator", "VSIXProjectPocoGenerator\VSIXProjectPocoGenerator.csproj", "{B4912ACB-1560-4BAE-A0D3-E231A75932F5}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{4F022DF6-D3C7-4DEF-A86C-582CC7894C5A}"
+	ProjectSection(SolutionItems) = preProject
+		..\Dab\dab-config.json = ..\Dab\dab-config.json
+		..\Dab\SampleDb\Scripts\PreDeployment.sql = ..\Dab\SampleDb\Scripts\PreDeployment.sql
+	EndProjectSection
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
